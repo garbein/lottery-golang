@@ -6,7 +6,9 @@ import (
 )
 
 func main() {
+	// 初始化app
 	apps.InitApp()
 	httpSever := servers.NewHttpServer()
+	// 运行service
 	httpSever.Run()
 }

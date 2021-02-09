@@ -1,6 +1,7 @@
 package apps
 
 import (
+	"flag"
 	"fmt"
 
 	"github.com/garbein/lottery-golang/configs"
@@ -15,22 +16,34 @@ import (
 var App Application
 
 type Application struct {
-	Config configs.Config
-	Logger *zap.Logger
-	DB     *gorm.DB
-	Redis  redis.Conn
+	ConfigFile string
+	Config     configs.Config
+	Logger     *zap.Logger
+	DB         *gorm.DB
+	Redis      redis.Conn
 }
 
 func InitApp() {
+	App.initArgs()
 	App.initConfig()
 	App.initLogger()
 	App.initDB()
 	App.initRedis()
 }
 
+// 读取命令行参数
+func (app *Application) initArgs() {
+	var configFile string
+	flag.StringVar(&configFile, "c", "configs/config.toml", "please config a *.toml file")
+	flag.Parse()
+	app.ConfigFile = configFile
+}
+
+// 读取配置
 func (app *Application) initConfig() {
 	v := viper.New()
-	v.SetConfigFile("configs/config.toml")
+	v.SetConfigFile(app.ConfigFile)
+	fmt.Println("config file:", app.ConfigFile)
 	err := v.ReadInConfig()
 	if err != nil {
 		panic("read config fail")
@@ -38,6 +51,7 @@ func (app *Application) initConfig() {
 	v.Unmarshal(&app.Config)
 }
 
+// 初始化zap
 func (app *Application) initLogger() {
 	logger, err := zap.NewProduction()
 	if err != nil {
