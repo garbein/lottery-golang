@@ -3,6 +3,7 @@ package apps
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/garbein/lottery-golang/configs"
 	"github.com/gomodule/redigo/redis"
@@ -20,7 +21,7 @@ type Application struct {
 	Config     configs.Config
 	Logger     *zap.Logger
 	DB         *gorm.DB
-	Redis      redis.Conn
+	Redis      *redis.Pool
 }
 
 func InitApp() {
@@ -75,9 +76,16 @@ func (app *Application) initDB() {
 }
 
 func (app *Application) initRedis() {
-	client, err := redis.Dial("tcp", fmt.Sprintf("%s:%s", app.Config.Redis.Host, app.Config.Redis.Port))
-	if err != nil {
-		panic("failed to connect redis")
+	app.Redis = &redis.Pool{
+		MaxIdle:     5,
+		MaxActive:   10,
+		IdleTimeout: 240 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			client, err := redis.Dial("tcp", fmt.Sprintf("%s:%s", app.Config.Redis.Host, app.Config.Redis.Port))
+			if err != nil {
+				return nil, err
+			}
+			return client, err
+		},
 	}
-	app.Redis = client
 }

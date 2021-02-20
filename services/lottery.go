@@ -19,7 +19,9 @@ const random_max = 1000
 // 开始抽奖
 func StartLottery(userId int) (responses.ResponseBody, error) {
 	// 一天只能抽奖一次
-	h, _ := redis.Bool(apps.App.Redis.Do("sadd", "draw:record:"+time.Now().Format("20060102"), userId))
+	redisConn := apps.App.Redis.Get()
+	defer redisConn.Close()
+	h, _ := redis.Bool(redisConn.Do("sadd", "draw:record:"+time.Now().Format("20060102"), userId))
 	fmt.Println("h:", h)
 	if !h {
 		return responses.ErrorResponse("一天只有一次抽奖机会"), nil
@@ -60,9 +62,11 @@ func execRule(userId int, prize *models.FormatPrize) bool {
 	}
 	rule := make(map[string]int)
 	json.Unmarshal([]byte(prize.Rule), &rule)
+	redisConn := apps.App.Redis.Get()
+	defer redisConn.Close()
 	// 奖品每天最多中奖限制
 	if dayLimit, ok := rule["day_limit"]; ok {
-		dayNum, err := redis.Int(apps.App.Redis.Do("incr", fmt.Sprintf("prize:day:limit:%d:%s", prize.Id, time.Now().Format("20060102"))))
+		dayNum, err := redis.Int(redisConn.Do("incr", fmt.Sprintf("prize:day:limit:%d:%s", prize.Id, time.Now().Format("20060102"))))
 		if err != nil || dayNum > dayLimit {
 			apps.App.Logger.Info("超过每天最多中奖规则限制", zap.String("prizeName", prize.Name))
 			return false
@@ -70,7 +74,7 @@ func execRule(userId int, prize *models.FormatPrize) bool {
 	}
 	//有序集合中元素是用户ID,分数是中奖数量
 	if userLimit, ok := rule["user_limit"]; ok {
-		userNum, err := redis.Int(apps.App.Redis.Do("zscore", fmt.Sprintf("prize:user:num:%d", prize.Id), userId))
+		userNum, err := redis.Int(redisConn.Do("zscore", fmt.Sprintf("prize:user:num:%d", prize.Id), userId))
 		if err != nil || userNum > userLimit {
 			apps.App.Logger.Info("超过最多中奖规则限制", zap.String("prizeName", prize.Name), zap.Int("userId", userId))
 			return false
@@ -87,7 +91,9 @@ func checkStock(prize *models.FormatPrize) bool {
 	if ok && unlimit > 0 {
 		return true
 	}
-	stock, err := redis.Int(apps.App.Redis.Do("hincrby", "prize:stock", prize.Id, 1))
+	redisConn := apps.App.Redis.Get()
+	defer redisConn.Close()
+	stock, err := redis.Int(redisConn.Do("hincrby", "prize:stock", prize.Id, 1))
 	apps.App.Logger.Info("stock", zap.Int("stock", stock))
 	if err != nil {
 		return false
@@ -107,7 +113,9 @@ func afterLottery(userId int, prize *models.FormatPrize) {
 		if _, err := addUserPrize(userId, prize.Id); err != nil {
 			return err
 		}
-		if _, err := apps.App.Redis.Do("zincrby", fmt.Sprintf("prize:user:num:%d", prize.Id), 1, userId); err != nil {
+		redisConn := apps.App.Redis.Get()
+		defer redisConn.Close()
+		if _, err := redisConn.Do("zincrby", fmt.Sprintf("prize:user:num:%d", prize.Id), 1, userId); err != nil {
 			return err
 		}
 		return nil
@@ -136,7 +144,9 @@ func randomLottery(prizeList []*models.FormatPrize) *models.FormatPrize {
 // 取参与活动的奖品
 func getPrizeList() ([]*models.FormatPrize, error) {
 	var formatPrizeList []*models.FormatPrize
-	cache, err := redis.Bytes(apps.App.Redis.Do("GET", "prize:list"))
+	redisConn := apps.App.Redis.Get()
+	defer redisConn.Close()
+	cache, err := redis.Bytes(redisConn.Do("GET", "prize:list"))
 	if err == nil && cache != nil {
 		if err := json.Unmarshal(cache, &formatPrizeList); err == nil {
 			return formatPrizeList, nil
@@ -158,7 +168,9 @@ func getPrizeList() ([]*models.FormatPrize, error) {
 	}
 	j, err := json.Marshal(formatPrizeList)
 	if err == nil {
-		apps.App.Redis.Do("SET", "prize:list", j)
+		redisConn := apps.App.Redis.Get()
+		defer redisConn.Close()
+		redisConn.Do("SET", "prize:list", j)
 	}
 	return formatPrizeList, nil
 }
